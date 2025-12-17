@@ -105,6 +105,3 @@ python generate.py --vocab data/chembl/vocab.txt --model ckpt/chembl-pretrained/
 - If `part_c/part_c.py` fails to find your model, update `MODEL_PATH` or pass a checkpoint to the script (it currently uses a constant). You can also load the checkpoint manually in an interactive session to validate.
 - Use `requirements.txt` to view pinned package versions.
 
-## Next steps (optional)
-
-- I can add a `environment.yml` for conda reproducibility, make a small wrapper CLI for running the parts with options, or add a CONTRIBUTING guide. Tell me which you'd prefer.
