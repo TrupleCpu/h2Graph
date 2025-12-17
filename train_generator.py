@@ -93,7 +93,7 @@ for epoch in range(args.epoch):
         nn.utils.clip_grad_norm_(model.parameters(), args.clip_norm)
         optimizer.step()
 
-        meters = meters + np.array([kl_div, loss.item(), wacc * 100, iacc * 100, tacc * 100, sacc * 100])
+        meters = meters + np.array([kl_div, loss.item(), wacc.item() * 100, iacc.item() * 100, tacc.item() * 100, sacc.item() * 100])
 
         if total_step % args.print_iter == 0:
             meters /= args.print_iter

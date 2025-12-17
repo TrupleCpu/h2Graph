@@ -1,95 +1,110 @@
-# Hierarchical Generation of Molecular Graphs using Structural Motifs
+# Project setup and how to access parts A / B / C
 
-Our paper is at https://arxiv.org/pdf/2002.03230.pdf
+Paper: https://arxiv.org/pdf/2002.03230.pdf
 
-## Installation
-First install the dependencies via conda:
- * PyTorch >= 1.0.0
- * networkx
- * RDKit >= 2019.03
- * numpy
- * Python >= 3.6
+## What to set up first
 
-And then run `pip install .`. Additional dependency for property-guided finetuning:
- * Chemprop >= 1.2.0
+- Create and activate a Python environment (conda recommended).
+- Install RDKit (via conda-forge) and a suitable PyTorch build that matches your CUDA (or CPU-only) setup.
+- Install Python packages from `requirements.txt` and install the package in editable mode: `pip install -e .`.
+- Ensure `data/` and `ckpt/` folders are present and populated with any checkpoints or datasets you plan to use (examples are included in the repository).
 
+## Quick installation (recommended)
 
-## Data Format
-* For graph generation, each line of a training file is a SMILES string of a molecule
-* For graph translation, each line of a training file is a pair of molecules (molA, molB) that are similar to each other but molB has better chemical properties. Please see `data/qed/train_pairs.txt`. The test file is a list of molecules to be optimized. Please see `data/qed/test.txt`.
-
-## Molecule generation pretraining procedure
-We can train a molecular language model on a large corpus of unlabeled molecules. We have uploaded a model checkpoint pre-trained on ChEMBL dataset in `ckpt/chembl-pretrained/model.ckpt`. If you wish to train your own language model, please follow the steps below:
-
-1. Extract substructure vocabulary from a given set of molecules:
-```
-python get_vocab.py --ncpu 16 < data/chembl/all.txt > vocab.txt
+```bash
+conda create -n hgraph python=3.8 -y
+conda activate hgraph
+conda install -c conda-forge rdkit -y
+# Install PyTorch according to your CUDA version; see https://pytorch.org/
+pip install -r requirements.txt
+pip install -e .
 ```
 
-2. Preprocess training data:
+If you plan to use property-guided finetuning, install `chemprop` separately following its documentation.
+
+## Important repository layout
+
+- `data/` — datasets (chembl, qed, drd2, polymers, scraped_data)
+- `ckpt/` — checkpoints and saved models (e.g. `ckpt/chembl-pretrained/model.ckpt`, `ckpt/antibiotc/`)
+- `hgraph/` — core model code (encoder/decoder, dataset, vocab)
+- `part_a/`, `part_b/`, `part_c/` — analysis and evaluation scripts
+
+## Running the main workflows (short commands)
+
+- Extract vocabulary:
+
+```bash
+python get_vocab.py --ncpu 16 < data/chembl/all.txt > data/chembl/vocab.txt
 ```
-python preprocess.py --train data/chembl/all.txt --vocab data/chembl/all.txt --ncpu 16 --mode single
+
+- Preprocess (example):
+
+```bash
+python preprocess.py --train data/chembl/all.txt --vocab data/chembl/vocab.txt --ncpu 16 --mode single
 mkdir train_processed
 mv tensor* train_processed/
 ```
 
-3. Train graph generation model
-```
-mkdir ckpt/chembl-pretrained
+- Train generator:
+
+```bash
+mkdir -p ckpt/chembl-pretrained
 python train_generator.py --train train_processed/ --vocab data/chembl/vocab.txt --save_dir ckpt/chembl-pretrained
 ```
 
-4. Sample molecules from a model checkpoint
-```
+- Generate samples:
+
+```bash
 python generate.py --vocab data/chembl/vocab.txt --model ckpt/chembl-pretrained/model.ckpt --nsamples 1000
 ```
 
-## Property-guided molcule generation procedure (a.k.a. finetuning)
-The following script loads a trained Chemprop model and finetunes a pre-trained molecule language model to generate molecules with specific chemical properties.
-```
-mkdir ckpt/finetune
-python finetune_generator.py --train ${ACTIVE_MOLECULES} --vocab data/chembl/vocab.txt --generative_model ckpt/chembl-pretrained/model.ckpt --chemprop_model ${YOUR_PROPERTY_PREDICTOR} --min_similarity 0.1 --max_similarity 0.5 --nsample 10000 --epoch 10 --threshold 0.5 --save_dir ckpt/finetune
-```
-Here `${ACTIVE_MOLECULES}` should contain a list of experimentally verified active molecules. 
+## Part-specific scripts (how to run)
 
-`${YOUR_PROPERTY_PREDICTOR}` should be a directory containing saved chemprop model checkpoint. 
+- Part A — Evaluation grid and summary
 
-`--max_similarity 0.5` means any novel molecule should have nearest neighbor similarity lower than 0.5 to any known active molecules in ${ACTIVE_MOLECULES}` file.
+  - Script: `part_a/eval_partA.py`
+  - Purpose: Reads `data/scraped_data/scrapedData_clean.txt`, simulates model outputs (replace the `model_predict` stub with your model invocation), computes validity/ similarity metrics, and writes `results.csv`, `similarity_distribution.png`, and `qualitative_grid.png`.
+  - Run:
 
-`--nsample 10000` means to sample 10000 molecules in each epoch. 
+  ```bash
+  python part_a/eval_partA.py
+  ```
 
-`--threshold 0.5` is the activity threshold. A molecule is considered as active if its predicted chemprop score is greater than 0.5.
+  - Notes: Ensure `data/scraped_data/scrapedData_clean.txt` exists. Replace `model_predict` in the script with a call to your model (e.g., reconstruction/generation function) to evaluate real model outputs.
 
-In each epoch, generated active molecules are saved in `ckpt/finetune/good_molecules.${epoch}`. All the novel active molecules are saved in `ckpt/finetune/new_molecules.${epoch}`
+- Part B — Checkpoint / information-loss plots
 
-## Molecule translation training procedure
-Molecule translation is often useful for lead optimization (i.e., modifying a given molecule to improve its properties)
+  - Script: `part_b/information_loss_partB.py`
+  - Purpose: Generates example plots (`exact_match_trend.png`, `tanimoto_trend.png`) showing training progress or checkpoint trends.
+  - Run:
 
-1. Extract substructure vocabulary from a given set of molecules:
-```
-python get_vocab.py --ncpu 16 < data/qed/mols.txt > vocab.txt
-```
-Please replace `data/qed/mols.txt` with your molecules.
+  ```bash
+  python part_b/information_loss_partB.py
+  ```
 
-2. Preprocess training data:
-```
-python preprocess.py --train data/qed/train_pairs.txt --vocab data/qed/vocab.txt --ncpu 16
-mkdir train_processed
-mv tensor* train_processed/
-```
+- Part C — Hierarchical probing and probing plots
+  - Script: `part_c/part_c.py`
+  - Purpose: Loads a trained `HierVAE` model, extracts hidden states, trains simple Ridge probes to predict chemical properties (e.g., molecular weight, ring count), saves `probing_metrics.csv` and `probing_results.png`.
+  - Run:
+  ```bash
+  python part_c/part_c.py
+  ```
+  - Notes:
+    - The script loads model and vocab from constants near the top: `MODEL_PATH`, `VOCAB_PATH`, `DATA_PATH`. Update those paths or the file to point to your checkpoint and vocab if needed.
+    - The script uses `cuda` if available; ensure PyTorch and GPU drivers are configured for GPU runs.
 
-3. Train the model:
-```
-mkdir ckpt/translation
-python train_translator.py --train train_processed/ --vocab data/qed/vocab.txt --save_dir ckpt/translation
-```
+## Accessing checkpoints and outputs
 
-4. Make prediction on your lead compounds (you can use any model checkpoint, here we use model.5 for illustration)
-```
-python translate.py --test data/qed/valid.txt --vocab data/qed/vocab.txt --model ckpt/translation/model.5 --num_decode 20 > results.csv
-```
+- Example pretrained checkpoint: `ckpt/chembl-pretrained/model.ckpt`
+- Antibiotic checkpoints: `ckpt/antibiotc/` contains `model.ckpt.*` files shown in the repo
+- Finetune outputs: `ckpt/finetune/` and `results.csv` (from translation) are used to collect generated molecules and metrics
 
-## Polymer generation
-The polymer generation code is in the `polymer/` folder. The polymer generation code is similar to `train_generator.py`, but the substructures are tailored for polymers. 
-For generating regular drug like molecules, we recommend to use `train_generator.py` in the root directory.
+## Troubleshooting & tips
 
+- RDKit: install via `conda install -c conda-forge rdkit` for best compatibility on Windows and Linux.
+- If `part_c/part_c.py` fails to find your model, update `MODEL_PATH` or pass a checkpoint to the script (it currently uses a constant). You can also load the checkpoint manually in an interactive session to validate.
+- Use `requirements.txt` to view pinned package versions.
+
+## Next steps (optional)
+
+- I can add a `environment.yml` for conda reproducibility, make a small wrapper CLI for running the parts with options, or add a CONTRIBUTING guide. Tell me which you'd prefer.
